@@ -176,7 +176,7 @@ const ArtworkTable = () => {
           paginatorTemplate="PrevPageLink PageLinks NextPageLink"
           tableStyle={{ minWidth: "50rem" }}
         >
-          <Column header={firstColHeader} headerStyle={{ width: "4rem" }} />
+          <Column selectionMode="multiple" header={firstColHeader} headerStyle={{ width: "4rem" }} />
           <Column
             field="title"
             header="Title"
