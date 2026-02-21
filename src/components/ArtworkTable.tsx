@@ -8,19 +8,16 @@ import CustomSelectionPanel from "./CustomSelectionPanel";
 import type { Artwork, ApiResponse } from "../apiTypes";
 
 const ArtworkTable = () => {
-
   const [rows, setRows] = useState<Artwork[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [selectedRows, setSelectedRows] = useState<Artwork[]>([]);
 
   const [pageState, setPageState] = useState({
     first: 0,
     rows: 12,
-    page: 1
+    page: 1,
   });
-
-  // bulk selection limit (global)
-  const [limit, setLimit] = useState<number | null>(null);
 
   const panelRef = useRef<OverlayPanel>(null);
 
@@ -32,14 +29,13 @@ const ArtworkTable = () => {
         {
           params: {
             page: pageState.page,
-            limit: pageState.rows
-          }
-        }
+            limit: pageState.rows,
+          },
+        },
       );
 
       setRows(res.data.data);
       setTotal(res.data.pagination.total);
-
     } catch (err) {
       console.error("Fetch error", err);
     } finally {
@@ -55,16 +51,9 @@ const ArtworkTable = () => {
     setPageState({
       first: e.first,
       rows: e.rows,
-      page: (e.page || 0) + 1
+      page: (e.page || 0) + 1,
     });
   };
-
-  // selection based on global index
-  const selectedRows = rows.filter((_, index) => {
-    if (limit === null) return false;
-    const globalIndex = pageState.first + index;
-    return globalIndex < limit;
-  });
 
   const headerTemplate = (
     <div className="flex align-items-center gap-2">
@@ -76,7 +65,9 @@ const ArtworkTable = () => {
       <OverlayPanel ref={panelRef}>
         <CustomSelectionPanel
           onApply={(count) => {
-            setLimit(count);
+            // Bulk-select the first N rows across all fetched data
+            const selected = rows.slice(0, count);
+            setSelectedRows(selected);
             panelRef.current?.hide();
           }}
         />
@@ -99,6 +90,7 @@ const ArtworkTable = () => {
         onPage={handlePage}
         loading={loading}
         selection={selectedRows}
+        onSelectionChange={(e) => setSelectedRows(e.value as Artwork[])}
         selectionMode="checkbox"
         tableStyle={{ minWidth: "50rem" }}
       >
