@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { DataTable } from "primereact/datatable";
 import { Column } from "primereact/column";
 import { OverlayPanel } from "primereact/overlaypanel";
-import type { DataTablePageEvent } from "primereact/datatable";
+import type {
+  DataTablePageEvent,
+  DataTableRowSelectEvent,
+  DataTableRowUnselectEvent,
+} from "primereact/datatable";
 import axios from "axios";
 import CustomSelectionPanel from "./CustomSelectionPanel";
 import type { Artwork, ApiResponse } from "../apiTypes";
@@ -11,13 +15,19 @@ const ArtworkTable = () => {
   const [rows, setRows] = useState<Artwork[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [selectedRows, setSelectedRows] = useState<Artwork[]>([]);
 
   const [pageState, setPageState] = useState({
     first: 0,
     rows: 12,
     page: 1,
   });
+
+  // ── selection state ──────────────────────────────────────────
+  const [bulkLimit, setBulkLimit] = useState<number | null>(null);
+  const [selectAll, setSelectAll] = useState(false);
+  const [manualSelected, setManualSelected] = useState<Set<number>>(new Set());
+  const [manualDeselected, setManualDeselected] = useState<Set<number>>(new Set());
+  // ─────────────────────────────────────────────────────────────
 
   const panelRef = useRef<OverlayPanel>(null);
 
@@ -54,70 +64,71 @@ const ArtworkTable = () => {
     });
   };
 
-  const handleSelectN = async (count: number) => {
-    panelRef.current?.hide();
-    setLoading(true);
-    try {
-      const collected: Artwork[] = [];
-      let page = 1;
+  // Compute selected rows for the current page only.
+  // Rule: row is selected if
+  //   (globalIndex < bulkLimit  AND  NOT manuallyDeselected)
+  //   OR (selectAll  AND  NOT manuallyDeselected)
+  //   OR manuallySelected
+  const computedSelection = rows.filter((row, rowIndex) => {
+    const globalIndex = pageState.first + rowIndex;
+    if (manualDeselected.has(row.id)) return false;
+    if (selectAll || (bulkLimit !== null && globalIndex < bulkLimit)) return true;
+    if (manualSelected.has(row.id)) return true;
+    return false;
+  });
 
-      while (collected.length < count) {
-        const needed = count - collected.length;
-        const limit = Math.min(needed, 100);
-
-        const res = await axios.get<ApiResponse>(
-          "https://api.artic.edu/api/v1/artworks",
-          { params: { page, limit } }
-        );
-
-        collected.push(...res.data.data);
-        if (res.data.data.length < limit) break;
-        page++;
-      }
-
-      setSelectedRows((prev) => {
-        const existingIds = new Set(prev.map((r) => r.id));
-        const toAdd = collected.filter((r) => !existingIds.has(r.id));
-        return [...prev, ...toAdd];
+  // Called when user checks a row checkbox
+  const handleRowSelect = (e: DataTableRowSelectEvent) => {
+    const id = (e.data as Artwork).id;
+    if (manualDeselected.has(id)) {
+      // Row was in bulk/selectAll but manually unchecked before — re-check it
+      setManualDeselected((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
       });
-    } catch (err) {
-      console.error("selectN failed", err);
-    } finally {
-      setLoading(false);
+    } else {
+      // Row is outside bulk range — track as manually selected
+      setManualSelected((prev) => new Set([...prev, id]));
     }
   };
 
-  const handleSelectAll = async () => {
-    panelRef.current?.hide();
-    setLoading(true);
-    try {
-      const all: Artwork[] = [];
-      let page = 1;
+  // Called when user unchecks a row checkbox
+  const handleRowUnselect = (e: DataTableRowUnselectEvent) => {
+    const rowIndex = rows.findIndex((r) => r.id === (e.data as Artwork).id);
+    const globalIndex = pageState.first + rowIndex;
+    const id = (e.data as Artwork).id;
 
-      const first = await axios.get<ApiResponse>(
-        "https://api.artic.edu/api/v1/artworks",
-        { params: { page: 1, limit: 100 } }
-      );
-      all.push(...first.data.data);
-      const totalRecords = first.data.pagination.total;
-      page = 2;
-
-      while (all.length < totalRecords) {
-        const res = await axios.get<ApiResponse>(
-          "https://api.artic.edu/api/v1/artworks",
-          { params: { page, limit: 100 } }
-        );
-        all.push(...res.data.data);
-        if (res.data.data.length < 100) break;
-        page++;
-      }
-
-      setSelectedRows(all);
-    } catch (err) {
-      console.error("selectAll failed", err);
-    } finally {
-      setLoading(false);
+    const inBulk = bulkLimit !== null && globalIndex < bulkLimit;
+    if (selectAll || inBulk) {
+      // Row was selected by bulk/selectAll — track as manually deselected
+      setManualDeselected((prev) => new Set([...prev, id]));
+    } else {
+      // Row was manually selected — remove it
+      setManualSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
+  };
+
+  // Apply button → select first N rows by global index
+  const handleApply = (count: number) => {
+    panelRef.current?.hide();
+    setBulkLimit(count);
+    setSelectAll(false);
+    setManualSelected(new Set());
+    setManualDeselected(new Set());
+  };
+
+  // Select All button → mark every row across all pages as selected
+  const handleSelectAll = () => {
+    panelRef.current?.hide();
+    setSelectAll(true);
+    setBulkLimit(null);
+    setManualSelected(new Set());
+    setManualDeselected(new Set());
   };
 
   const headerTemplate = (
@@ -129,7 +140,7 @@ const ArtworkTable = () => {
 
       <OverlayPanel ref={panelRef}>
         <CustomSelectionPanel
-          onApply={handleSelectN}
+          onApply={handleApply}
           onSelectAll={handleSelectAll}
         />
       </OverlayPanel>
@@ -150,8 +161,9 @@ const ArtworkTable = () => {
         totalRecords={total}
         onPage={handlePage}
         loading={loading}
-        selection={selectedRows}
-        onSelectionChange={(e) => setSelectedRows(e.value as Artwork[])}
+        selection={computedSelection}
+        onRowSelect={handleRowSelect}
+        onRowUnselect={handleRowUnselect}
         selectionMode="checkbox"
         tableStyle={{ minWidth: "50rem" }}
       >
