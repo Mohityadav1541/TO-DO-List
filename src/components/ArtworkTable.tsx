@@ -7,6 +7,8 @@ import axios from "axios";
 import CustomSelectionPanel from "./CustomSelectionPanel";
 import type { Artwork, ApiResponse } from "../apiTypes";
 
+const PAGE_SIZE = 12; // rows per page shown in table
+
 const ArtworkTable = () => {
   const [rows, setRows] = useState<Artwork[]>([]);
   const [total, setTotal] = useState(0);
@@ -15,7 +17,7 @@ const ArtworkTable = () => {
 
   const [pageState, setPageState] = useState({
     first: 0,
-    rows: 12,
+    rows: PAGE_SIZE,
     page: 1,
   });
 
@@ -55,6 +57,88 @@ const ArtworkTable = () => {
     });
   };
 
+  /**
+   * Fetch exactly `count` rows from the API starting at page 1.
+   * Pages are fetched sequentially until we have enough rows.
+   */
+  const handleSelectN = async (count: number) => {
+    panelRef.current?.hide();
+    setLoading(true);
+    try {
+      const FETCH_LIMIT = 100; // max per API request
+      const collected: Artwork[] = [];
+      let page = 1;
+
+      while (collected.length < count) {
+        const needed = count - collected.length;
+        const limit = Math.min(needed, FETCH_LIMIT);
+
+        const res = await axios.get<ApiResponse>(
+          "https://api.artic.edu/api/v1/artworks",
+          { params: { page, limit } },
+        );
+
+        const data = res.data.data;
+        collected.push(...data);
+
+        // If the API returned fewer items than requested, we've hit the end
+        if (data.length < limit) break;
+
+        page++;
+      }
+
+      // Merge with existing selections (keep previous + add new unique ones)
+      setSelectedRows((prev) => {
+        const existingIds = new Set(prev.map((r) => r.id));
+        const toAdd = collected.filter((r) => !existingIds.has(r.id));
+        return [...prev, ...toAdd];
+      });
+    } catch (err) {
+      console.error("Select N error", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Select ALL rows from the API.
+   */
+  const handleSelectAll = async () => {
+    panelRef.current?.hide();
+    setLoading(true);
+    try {
+      const FETCH_LIMIT = 100;
+      const all: Artwork[] = [];
+      let page = 1;
+
+      // First request to get total count
+      const first = await axios.get<ApiResponse>(
+        "https://api.artic.edu/api/v1/artworks",
+        { params: { page: 1, limit: FETCH_LIMIT } },
+      );
+      all.push(...first.data.data);
+      const totalRecords = first.data.pagination.total;
+      page = 2;
+
+      while (all.length < totalRecords) {
+        const res = await axios.get<ApiResponse>(
+          "https://api.artic.edu/api/v1/artworks",
+          { params: { page, limit: FETCH_LIMIT } },
+        );
+        const data = res.data.data;
+        all.push(...data);
+        if (data.length < FETCH_LIMIT) break;
+        page++;
+      }
+
+      setSelectedRows(all);
+    } catch (err) {
+      console.error("Select All error", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const headerTemplate = (
     <div className="flex align-items-center gap-2">
       <i
@@ -64,12 +148,8 @@ const ArtworkTable = () => {
 
       <OverlayPanel ref={panelRef}>
         <CustomSelectionPanel
-          onApply={(count) => {
-            // Bulk-select the first N rows across all fetched data
-            const selected = rows.slice(0, count);
-            setSelectedRows(selected);
-            panelRef.current?.hide();
-          }}
+          onApply={handleSelectN}
+          onSelectAll={handleSelectAll}
         />
       </OverlayPanel>
 

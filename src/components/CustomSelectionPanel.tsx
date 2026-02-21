@@ -4,10 +4,10 @@ import { Button } from "primereact/button";
 
 interface Props {
   onApply: (count: number) => void;
+  onSelectAll: () => void;
 }
 
-const CustomSelectionPanel = ({ onApply }: Props) => {
-
+const CustomSelectionPanel = ({ onApply, onSelectAll }: Props) => {
   const [value, setValue] = useState<number | null>(null);
 
   const handleClick = () => {
@@ -29,6 +29,12 @@ const CustomSelectionPanel = ({ onApply }: Props) => {
       />
 
       <Button label="Apply" onClick={handleClick} />
+
+      <Button
+        label="Select All"
+        severity="secondary"
+        onClick={onSelectAll}
+      />
     </div>
   );
 };
