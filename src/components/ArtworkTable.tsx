@@ -2,10 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { DataTable } from "primereact/datatable";
 import { Column } from "primereact/column";
 import { OverlayPanel } from "primereact/overlaypanel";
-import type {
-  DataTablePageEvent,
-  DataTableSelectEvent,
-} from "primereact/datatable";
+import type { DataTablePageEvent } from "primereact/datatable";
 import axios from "axios";
 import CustomSelectionPanel from "./CustomSelectionPanel";
 import type { Artwork, ApiResponse } from "../apiTypes";
@@ -76,40 +73,39 @@ const ArtworkTable = () => {
     return false;
   });
 
-  // Called when user checks a row checkbox
-  const handleRowSelect = (e: DataTableSelectEvent) => {
-    const id = (e.data as Artwork).id;
-    if (manualDeselected.has(id)) {
-      // Row was in bulk/selectAll but manually unchecked before — re-check it
-      setManualDeselected((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    } else {
-      // Row is outside bulk range — track as manually selected
-      setManualSelected((prev) => new Set([...prev, id]));
-    }
-  };
+  // Handles both individual checkbox clicks AND the header select-all / deselect-all checkbox.
+  // We diff old vs new selection to figure out what was added or removed.
+  const handleSelectionChange = (e: { value: Artwork[] }) => {
+    const newSel = e.value;
+    const oldIds = new Set(computedSelection.map((r) => r.id));
+    const newIds = new Set(newSel.map((r) => r.id));
 
-  // Called when user unchecks a row checkbox
-  const handleRowUnselect = (e: DataTableSelectEvent) => {
-    const rowIndex = rows.findIndex((r) => r.id === (e.data as Artwork).id);
-    const globalIndex = pageState.first + rowIndex;
-    const id = (e.data as Artwork).id;
+    const added = newSel.filter((r) => !oldIds.has(r.id));
+    const removed = computedSelection.filter((r) => !newIds.has(r.id));
 
-    const inBulk = bulkLimit !== null && globalIndex < bulkLimit;
-    if (selectAll || inBulk) {
-      // Row was selected by bulk/selectAll — track as manually deselected
-      setManualDeselected((prev) => new Set([...prev, id]));
-    } else {
-      // Row was manually selected — remove it
-      setManualSelected((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
+    setManualSelected((prev) => {
+      const next = new Set(prev);
+      for (const row of added) {
+        const rowIndex = rows.findIndex((r) => r.id === row.id);
+        const globalIndex = pageState.first + rowIndex;
+        const inBulk = bulkLimit !== null && globalIndex < bulkLimit;
+        if (!selectAll && !inBulk) next.add(row.id);
+      }
+      for (const row of removed) next.delete(row.id);
+      return next;
+    });
+
+    setManualDeselected((prev) => {
+      const next = new Set(prev);
+      for (const row of added) next.delete(row.id);
+      for (const row of removed) {
+        const rowIndex = rows.findIndex((r) => r.id === row.id);
+        const globalIndex = pageState.first + rowIndex;
+        const inBulk = bulkLimit !== null && globalIndex < bulkLimit;
+        if (selectAll || inBulk) next.add(row.id);
+      }
+      return next;
+    });
   };
 
   // Apply button → select first N rows by global index
@@ -161,8 +157,7 @@ const ArtworkTable = () => {
         onPage={handlePage}
         loading={loading}
         selection={computedSelection}
-        onRowSelect={handleRowSelect}
-        onRowUnselect={handleRowUnselect}
+        onSelectionChange={handleSelectionChange}
         selectionMode="checkbox"
         tableStyle={{ minWidth: "50rem" }}
       >
