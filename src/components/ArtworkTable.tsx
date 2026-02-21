@@ -4,8 +4,7 @@ import { Column } from "primereact/column";
 import { OverlayPanel } from "primereact/overlaypanel";
 import type {
   DataTablePageEvent,
-  DataTableRowSelectEvent,
-  DataTableRowUnselectEvent,
+  DataTableSelectEvent,
 } from "primereact/datatable";
 import axios from "axios";
 import CustomSelectionPanel from "./CustomSelectionPanel";
@@ -78,7 +77,7 @@ const ArtworkTable = () => {
   });
 
   // Called when user checks a row checkbox
-  const handleRowSelect = (e: DataTableRowSelectEvent) => {
+  const handleRowSelect = (e: DataTableSelectEvent) => {
     const id = (e.data as Artwork).id;
     if (manualDeselected.has(id)) {
       // Row was in bulk/selectAll but manually unchecked before — re-check it
@@ -94,7 +93,7 @@ const ArtworkTable = () => {
   };
 
   // Called when user unchecks a row checkbox
-  const handleRowUnselect = (e: DataTableRowUnselectEvent) => {
+  const handleRowUnselect = (e: DataTableSelectEvent) => {
     const rowIndex = rows.findIndex((r) => r.id === (e.data as Artwork).id);
     const globalIndex = pageState.first + rowIndex;
     const id = (e.data as Artwork).id;
