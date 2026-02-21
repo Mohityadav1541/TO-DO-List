@@ -30,11 +30,7 @@ const CustomSelectionPanel = ({ onApply, onSelectAll }: Props) => {
 
       <Button label="Apply" onClick={handleClick} />
 
-      <Button
-        label="Select All"
-        severity="secondary"
-        onClick={onSelectAll}
-      />
+      <Button label="Select All" severity="secondary" onClick={onSelectAll} />
     </div>
   );
 };

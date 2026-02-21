@@ -7,8 +7,6 @@ import axios from "axios";
 import CustomSelectionPanel from "./CustomSelectionPanel";
 import type { Artwork, ApiResponse } from "../apiTypes";
 
-const PAGE_SIZE = 12; // rows per page shown in table
-
 const ArtworkTable = () => {
   const [rows, setRows] = useState<Artwork[]>([]);
   const [total, setTotal] = useState(0);
@@ -17,7 +15,7 @@ const ArtworkTable = () => {
 
   const [pageState, setPageState] = useState({
     first: 0,
-    rows: PAGE_SIZE,
+    rows: 12,
     page: 1,
   });
 
@@ -33,13 +31,12 @@ const ArtworkTable = () => {
             page: pageState.page,
             limit: pageState.rows,
           },
-        },
+        }
       );
-
       setRows(res.data.data);
       setTotal(res.data.pagination.total);
     } catch (err) {
-      console.error("Fetch error", err);
+      console.error("fetch failed", err);
     } finally {
       setLoading(false);
     }
@@ -57,64 +54,49 @@ const ArtworkTable = () => {
     });
   };
 
-  /**
-   * Fetch exactly `count` rows from the API starting at page 1.
-   * Pages are fetched sequentially until we have enough rows.
-   */
   const handleSelectN = async (count: number) => {
     panelRef.current?.hide();
     setLoading(true);
     try {
-      const FETCH_LIMIT = 100; // max per API request
       const collected: Artwork[] = [];
       let page = 1;
 
       while (collected.length < count) {
         const needed = count - collected.length;
-        const limit = Math.min(needed, FETCH_LIMIT);
+        const limit = Math.min(needed, 100);
 
         const res = await axios.get<ApiResponse>(
           "https://api.artic.edu/api/v1/artworks",
-          { params: { page, limit } },
+          { params: { page, limit } }
         );
 
-        const data = res.data.data;
-        collected.push(...data);
-
-        // If the API returned fewer items than requested, we've hit the end
-        if (data.length < limit) break;
-
+        collected.push(...res.data.data);
+        if (res.data.data.length < limit) break;
         page++;
       }
 
-      // Merge with existing selections (keep previous + add new unique ones)
       setSelectedRows((prev) => {
         const existingIds = new Set(prev.map((r) => r.id));
         const toAdd = collected.filter((r) => !existingIds.has(r.id));
         return [...prev, ...toAdd];
       });
     } catch (err) {
-      console.error("Select N error", err);
+      console.error("selectN failed", err);
     } finally {
       setLoading(false);
     }
   };
 
-  /**
-   * Select ALL rows from the API.
-   */
   const handleSelectAll = async () => {
     panelRef.current?.hide();
     setLoading(true);
     try {
-      const FETCH_LIMIT = 100;
       const all: Artwork[] = [];
       let page = 1;
 
-      // First request to get total count
       const first = await axios.get<ApiResponse>(
         "https://api.artic.edu/api/v1/artworks",
-        { params: { page: 1, limit: FETCH_LIMIT } },
+        { params: { page: 1, limit: 100 } }
       );
       all.push(...first.data.data);
       const totalRecords = first.data.pagination.total;
@@ -123,17 +105,16 @@ const ArtworkTable = () => {
       while (all.length < totalRecords) {
         const res = await axios.get<ApiResponse>(
           "https://api.artic.edu/api/v1/artworks",
-          { params: { page, limit: FETCH_LIMIT } },
+          { params: { page, limit: 100 } }
         );
-        const data = res.data.data;
-        all.push(...data);
-        if (data.length < FETCH_LIMIT) break;
+        all.push(...res.data.data);
+        if (res.data.data.length < 100) break;
         page++;
       }
 
       setSelectedRows(all);
     } catch (err) {
-      console.error("Select All error", err);
+      console.error("selectAll failed", err);
     } finally {
       setLoading(false);
     }
